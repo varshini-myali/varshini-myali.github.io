@@ -831,8 +831,8 @@
     <div class="chat-setup-sub" style="text-align:center">Switch the AI model powering your tutor. Mistral 7B is recommended for best results.</div>
     <label style="font-size:0.78rem;font-weight:600;color:var(--ink-light)">Choose Model</label>
     <select class="chat-model-select" id="chat-model-select">
-      <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct v0.3 ✦ recommended</option>
-      <option value="HuggingFaceH4/zephyr-7b-beta">Zephyr 7B Beta</option>
+      <option value="HuggingFaceH4/zephyr-7b-beta">Zephyr 7B Beta ✦ recommended</option>
+      <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct v0.3</option>
       <option value="microsoft/Phi-3-mini-4k-instruct">Phi-3 Mini 4K (fast)</option>
       <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0">TinyLlama 1.1B (fastest)</option>
     </select>
@@ -1548,81 +1548,60 @@ initAuth();
 renderHome();
 
 // ══════════════════════════════════════════════
-//  AI TUTOR CHATBOT — Hugging Face (CORS-safe)
+//  AI TUTOR CHATBOT — Hugging Face
 // ══════════════════════════════════════════════
 
-// ── Config ──
-// Using HF's router endpoint which has CORS headers enabled for browser use
 const HF_DEFAULT_KEY   = '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';
-const HF_DEFAULT_MODEL = 'mistralai/Mistral-7B-Instruct-v0.3';
+const HF_DEFAULT_MODEL = 'HuggingFaceH4/zephyr-7b-beta';
 
-// These are the CORS-enabled endpoints (router.huggingface.co allows browser origin)
-const HF_ENDPOINTS = {
-  chat: (model) => `https://router.huggingface.co/hf-inference/models/${model}/v1/chat/completions`,
-  legacy: (model) => `https://router.huggingface.co/hf-inference/models/${model}`,
-};
+// api-inference.huggingface.co supports CORS for browser requests with valid tokens
+// Using /v1/chat/completions endpoint (OpenAI-compatible, works for most instruct models)
+function getAPIUrl(model) {
+  return `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`;
+}
 
 // ── Chat State ──
-const chatState = {
-  open: false,
-  history: [],
-  isTyping: false,
-};
+const chatState = { open: false, history: [], isTyping: false };
 
-// ── Storage helpers ──
+// ── Storage ──
 function getHFKey()     { return localStorage.getItem('lms_hf_key') || HF_DEFAULT_KEY; }
 function saveHFKey(k)   { localStorage.setItem('lms_hf_key', k); }
 function getHFModel()   { return localStorage.getItem('lms_hf_model') || HF_DEFAULT_MODEL; }
 function saveHFModel(m) { localStorage.setItem('lms_hf_model', m); }
-function getChatHistory() {
-  try { return JSON.parse(localStorage.getItem('lms_chat_history') || '[]'); } catch { return []; }
-}
-function saveChatHistory(h) { localStorage.setItem('lms_chat_history', JSON.stringify(h.slice(-40))); }
+function getChatHistory()  { try { return JSON.parse(localStorage.getItem('lms_chat_history') || '[]'); } catch { return []; } }
+function saveChatHistory(h){ localStorage.setItem('lms_chat_history', JSON.stringify(h.slice(-40))); }
 
 // ── Toggle open/close ──
 function toggleChat() {
   chatState.open = !chatState.open;
-  const win     = document.getElementById('chat-window');
-  const fab     = document.getElementById('chat-fab');
+  const win = document.getElementById('chat-window');
+  const fab = document.getElementById('chat-fab');
   const fabIcon = document.getElementById('chat-fab-icon');
-  const badge   = document.getElementById('chat-badge');
-
+  const badge = document.getElementById('chat-badge');
   if (chatState.open) {
-    win.classList.remove('hidden');
-    win.style.display = 'flex';
-    win.style.flexDirection = 'column';
-    fab.classList.add('open');
-    fabIcon.textContent = '✕';
-    badge.style.display = 'none';
-    initChatUI();
-    updateChatContext();
+    win.classList.remove('hidden'); win.style.display = 'flex'; win.style.flexDirection = 'column';
+    fab.classList.add('open'); fabIcon.textContent = '\u2715'; badge.style.display = 'none';
+    initChatUI(); updateChatContext();
     setTimeout(() => document.getElementById('chat-input')?.focus(), 300);
   } else {
-    win.classList.add('closing');
-    fab.classList.remove('open');
-    fabIcon.textContent = '✦';
-    badge.style.display = 'flex';
-    setTimeout(() => {
-      win.classList.remove('closing');
-      win.classList.add('hidden');
-      win.style.display = '';
-    }, 180);
+    win.classList.add('closing'); fab.classList.remove('open');
+    fabIcon.textContent = '\u2726'; badge.style.display = 'flex';
+    setTimeout(() => { win.classList.remove('closing'); win.classList.add('hidden'); win.style.display = ''; }, 180);
   }
 }
 
-// ── Init: always go straight to chat ──
+// ── Init UI ──
 function initChatUI() {
   document.getElementById('chat-setup-screen').style.display = 'none';
-  const iface = document.getElementById('chat-interface');
-  iface.style.display = 'flex';
+  document.getElementById('chat-interface').style.display = 'flex';
   chatState.history = getChatHistory();
   renderChatMessages();
   if (chatState.history.length === 0) addWelcomeMessage();
   updateSuggestions();
 }
 
-// ── Model settings ──
-function saveApiKey() { saveModelOnly(); }
+// ── Settings ──
+function saveApiKey()    { saveModelOnly(); }
 function saveModelOnly() {
   const model = document.getElementById('chat-model-select')?.value;
   if (model) saveHFModel(model);
@@ -1641,187 +1620,148 @@ function openChatSettings() {
   document.getElementById('chat-interface').style.display = 'none';
 }
 
-// ── Clear conversation ──
+// ── Clear chat ──
 function clearChat() {
-  chatState.history = [];
-  saveChatHistory([]);
-  renderChatMessages();
-  addWelcomeMessage();
-  updateSuggestions();
+  chatState.history = []; saveChatHistory([]);
+  renderChatMessages(); addWelcomeMessage(); updateSuggestions();
 }
 
-// ── Welcome message ──
+// ── Welcome ──
 function addWelcomeMessage() {
   const ctx = getChatContext();
-  let msg = "Hi! I\u2019m your **Luminary AI Tutor** \ud83c\udf93\n\nI\u2019m here to help you understand concepts, answer questions, and guide your learning journey. What would you like to explore?";
-  if (ctx) msg = `Hi! I\u2019m your **Luminary AI Tutor** \ud83c\udf93\n\nI can see you\u2019re studying **${ctx}**. Ask me anything about this topic, or anything else you\u2019d like to learn!`;
+  const msg = ctx
+    ? `Hi! I\u2019m your **Luminary AI Tutor** \ud83c\udf93\n\nI can see you\u2019re studying **${ctx}**. Ask me anything about it!`
+    : `Hi! I\u2019m your **Luminary AI Tutor** \ud83c\udf93\n\nAsk me anything \u2014 concepts, code, career advice, or quiz questions!`;
   addBotMessage(msg);
 }
 
-// ── Get current page context ──
+// ── Context ──
 function getChatContext() {
   if (currentPage === 'learn' && currentSubjectId && currentVideoId) {
-    const subject = SUBJECTS.find(s => s.id === currentSubjectId);
-    const video   = subject ? getAllVideosForSubject(subject).find(v => v.id === currentVideoId) : null;
-    if (subject && video) return `${subject.title} \u2192 ${video.title}`;
-    if (subject) return subject.title;
+    const s = SUBJECTS.find(s => s.id === currentSubjectId);
+    const v = s ? getAllVideosForSubject(s).find(v => v.id === currentVideoId) : null;
+    return s && v ? `${s.title} \u2192 ${v.title}` : s ? s.title : null;
   }
   if (currentPage === 'subject' && currentSubjectId) {
-    const subject = SUBJECTS.find(s => s.id === currentSubjectId);
-    if (subject) return subject.title;
+    const s = SUBJECTS.find(s => s.id === currentSubjectId);
+    return s ? s.title : null;
   }
   return null;
 }
-
 function updateChatContext() {
-  const ctx  = getChatContext();
+  const ctx = getChatContext();
   const pill = document.getElementById('chat-context-pill');
   const txt  = document.getElementById('chat-context-text');
-  if (ctx && pill && txt) {
-    txt.textContent = 'Studying: ' + ctx;
-    pill.classList.remove('hidden');
-  } else if (pill) {
-    pill.classList.add('hidden');
-  }
+  if (ctx && pill && txt) { txt.textContent = 'Studying: ' + ctx; pill.classList.remove('hidden'); }
+  else if (pill) pill.classList.add('hidden');
 }
 
-// ── System prompt ──
+// ── Build messages ──
 function buildSystemPrompt() {
   const ctx = getChatContext();
-  let base = 'You are a friendly, expert AI tutor for Luminary, an online learning platform. Help students understand concepts clearly with examples. Be concise but thorough. Format code in markdown code blocks.';
-  if (ctx) base += ` The student is currently studying: "${ctx}". Prioritize answers relevant to this topic.`;
-  return base;
+  let p = 'You are a friendly, expert AI tutor for Luminary, an online learning platform. Help students understand concepts clearly. Be concise but helpful. Use markdown for code (``` blocks) and structure.';
+  if (ctx) p += ` The student is currently studying: "${ctx}". Focus your answers on this topic when relevant.`;
+  return p;
+}
+function buildMessages(userMsg) {
+  const msgs = [{ role: 'system', content: buildSystemPrompt() }];
+  chatState.history.slice(-10).forEach(m => msgs.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
+  msgs.push({ role: 'user', content: userMsg });
+  return msgs;
 }
 
-// ── Build messages array ──
-function buildMessages(userMessage) {
-  const messages = [{ role: 'system', content: buildSystemPrompt() }];
-  chatState.history.slice(-10).forEach(m => {
-    messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content });
-  });
-  messages.push({ role: 'user', content: userMessage });
-  return messages;
-}
-
-// ═══════════════════════════════════════════════
-//  CALL HUGGING FACE  — router.huggingface.co
-//  This endpoint sets Access-Control-Allow-Origin
-//  so browsers can call it directly (no CORS error)
-// ═══════════════════════════════════════════════
-async function callHuggingFace(userMessage) {
+// ══════════════════════════════════════════════
+//  HUGGING FACE API CALL
+//  Uses api-inference.huggingface.co /v1/chat/completions
+//  This endpoint sets CORS headers and works from browsers.
+//  Docs: https://huggingface.co/docs/api-inference/tasks/chat-completion
+// ══════════════════════════════════════════════
+async function callHuggingFace(userMsg) {
   const key   = getHFKey();
   const model = getHFModel();
+  const url   = getAPIUrl(model);
 
-  // ── Primary: chat completions via router (CORS-enabled) ──
-  const url = HF_ENDPOINTS.chat(model);
+  setStatus('Thinking\u2026');
 
-  let response;
+  let res;
   try {
-    response = await fetch(url, {
+    res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${key}`,
+        'Authorization': 'Bearer ' + key,
         'Content-Type': 'application/json',
+        'x-wait-for-model': 'true',
       },
       body: JSON.stringify({
-        model,
-        messages: buildMessages(userMessage),
-        max_tokens: 600,
+        model: model,
+        messages: buildMessages(userMsg),
+        max_tokens: 500,
         temperature: 0.7,
         top_p: 0.9,
         stream: false,
       }),
     });
-  } catch (err) {
-    // True network failure — show helpful message
-    throw new Error('Network error: Cannot reach Hugging Face. Check your internet connection.');
+  } catch (netErr) {
+    throw new Error('Cannot reach Hugging Face. Check your internet connection and try again.');
   }
 
-  // Model warming up on free tier — retry after wait
-  if (response.status === 503) {
-    updateChatStatusText('Model is warming up\u2026 retrying in 12s');
-    await sleep(12000);
+  // Model loading (free tier cold start) — wait and retry once
+  if (res.status === 503) {
+    setStatus('Model warming up\u2026 retrying in 15s');
+    await new Promise(r => setTimeout(r, 15000));
     try {
-      response = await fetch(url, {
+      res = await fetch(url, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages: buildMessages(userMessage), max_tokens: 600, temperature: 0.7, stream: false }),
+        headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'x-wait-for-model': 'true' },
+        body: JSON.stringify({ model, messages: buildMessages(userMsg), max_tokens: 500, temperature: 0.7, stream: false }),
       });
-    } catch (err) {
-      throw new Error('Model still not available. Please try again in a minute.');
+    } catch (e) {
+      throw new Error('Model still loading. Please try again in 30 seconds.');
     }
   }
 
-  if (response.status === 401) throw new Error('Invalid API token. The pre-set token may have expired.');
-  if (response.status === 429) throw new Error('Rate limit reached. Please wait a moment and try again.');
+  // Handle error responses
+  if (!res.ok) {
+    let errJson = {};
+    try { errJson = await res.json(); } catch {}
+    const msg = errJson?.error?.message || errJson?.error || '';
 
-  // Model doesn\u2019t support chat format \u2014 try legacy text-generation
-  if (response.status === 422 || response.status === 400) {
-    return await callLegacyEndpoint(userMessage, key, model);
+    if (res.status === 401) {
+      throw new Error('Authentication failed (401). Please go to \u2699 Settings and switch to a different model, or check your token.');
+    }
+    if (res.status === 403) {
+      throw new Error('Access denied (403). This model requires special access. Switch models in \u2699 Settings.');
+    }
+    if (res.status === 404) {
+      throw new Error('Model not found (404). Switch to a different model in \u2699 Settings.');
+    }
+    if (res.status === 429) {
+      throw new Error('Rate limit hit. Please wait 30 seconds and try again.');
+    }
+    if (res.status === 422) {
+      throw new Error('This model does not support chat format. Switch to Zephyr or Phi-3 in \u2699 Settings.');
+    }
+    throw new Error(`API error ${res.status}: ${msg || 'Unknown error. Try a different model.'}`);
   }
 
-  if (!response.ok) {
-    let errMsg = `HF API error ${response.status}`;
-    try { const e = await response.json(); errMsg = e.error?.message || e.error || errMsg; } catch {}
-    throw new Error(errMsg);
-  }
+  // Parse successful response
+  let data;
+  try { data = await res.json(); } catch { throw new Error('Could not parse response from model.'); }
 
-  const data = await response.json();
+  const text = data?.choices?.[0]?.message?.content;
+  if (text) return text.trim();
 
-  // OpenAI-compatible chat response
-  if (data?.choices?.[0]?.message?.content) {
-    return data.choices[0].message.content.trim();
-  }
-  // Legacy array format
-  if (Array.isArray(data) && data[0]?.generated_text) {
-    return cleanText(data[0].generated_text);
-  }
-  if (data?.generated_text) return cleanText(data.generated_text);
-
-  throw new Error('Unexpected response format. Try a different model in \u2699 settings.');
-}
-
-// ── Legacy endpoint (text-generation) via router ──
-async function callLegacyEndpoint(userMessage, key, model) {
-  const sys    = buildSystemPrompt();
-  const recent = chatState.history.slice(-6);
-  let prompt   = `[INST] ${sys}\n`;
-  recent.forEach(m => {
-    if (m.role === 'user') prompt += `${m.content} [/INST] `;
-    else prompt += `${m.content} </s><s>[INST] `;
-  });
-  prompt += `${userMessage} [/INST]`;
-
-  const response = await fetch(HF_ENDPOINTS.legacy(model), {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: { max_new_tokens: 600, temperature: 0.7, return_full_text: false },
-      options: { wait_for_model: true },
-    }),
-  });
-
-  if (response.status === 503) throw new Error('Model is loading. Please wait ~20 seconds and try again.');
-  if (!response.ok) throw new Error(`API error ${response.status}. Try switching models in \u2699.`);
-
-  const data = await response.json();
+  // Fallback: some models return array format
   if (Array.isArray(data) && data[0]?.generated_text) return cleanText(data[0].generated_text);
   if (data?.generated_text) return cleanText(data.generated_text);
-  throw new Error('Could not read model response. Try a different model.');
+
+  throw new Error('Unexpected response format. Try a different model in \u2699 Settings.');
 }
 
-function cleanText(text) {
-  return text
-    .replace(/^\s*\[\/INST\]\s*/, '')
-    .replace(/^\s*<\|assistant\|>\s*/, '')
-    .replace(/^\s*Assistant:\s*/i, '')
-    .replace(/<\/s>[\s\S]*$/, '')
-    .trim() || "I didn\u2019t quite catch that. Could you rephrase?";
+function cleanText(t) {
+  return t.replace(/^\s*<\|assistant\|>\s*/,'').replace(/^\s*Assistant:\s*/i,'').replace(/<\/s>[\s\S]*$/,'').trim();
 }
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function updateChatStatusText(t) {
+function setStatus(t) {
   const el = document.getElementById('chat-status-text');
   if (el) el.textContent = t;
 }
@@ -1832,9 +1772,7 @@ async function sendChatMessage() {
   const msg = inp?.value?.trim();
   if (!msg || chatState.isTyping) return;
 
-  inp.value = '';
-  autoResizeTextarea(inp);
-
+  inp.value = ''; autoResizeTextarea(inp);
   chatState.history.push({ role: 'user', content: msg });
   addUserMessage(msg);
   document.getElementById('chat-suggestions').innerHTML = '';
@@ -1842,7 +1780,6 @@ async function sendChatMessage() {
   chatState.isTyping = true;
   document.getElementById('chat-send-btn').disabled = true;
   const typingEl = addTypingIndicator();
-  updateChatStatusText('Thinking\u2026');
 
   try {
     const reply = await callHuggingFace(msg);
@@ -1850,12 +1787,12 @@ async function sendChatMessage() {
     chatState.history.push({ role: 'assistant', content: reply });
     saveChatHistory(chatState.history);
     addBotMessage(reply);
-    updateChatStatusText('Powered by Hugging Face');
+    setStatus('Powered by Hugging Face');
     updateSuggestions();
   } catch (err) {
     typingEl.remove();
-    addBotMessage(`\u26a0\ufe0f **${err.message}**`);
-    updateChatStatusText('Error \u2014 see message above');
+    addBotMessage('\u26a0\ufe0f **' + err.message + '**');
+    setStatus('Error — see message above');
   } finally {
     chatState.isTyping = false;
     document.getElementById('chat-send-btn').disabled = false;
@@ -1863,75 +1800,42 @@ async function sendChatMessage() {
   }
 }
 
-// ── Render all messages ──
+// ── Render messages ──
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
-  el.innerHTML = '';
-  if (chatState.history.length > 0) {
-    el.innerHTML = '<div class="chat-date-divider">Today</div>';
-    chatState.history.forEach(m => {
-      if (m.role === 'user') appendUserBubble(el, m.content);
-      else appendBotBubble(el, m.content);
-    });
-  }
+  el.innerHTML = chatState.history.length ? '<div class="chat-date-divider">Today</div>' : '';
+  chatState.history.forEach(m => m.role === 'user' ? appendUserBubble(el, m.content) : appendBotBubble(el, m.content));
   scrollChatToBottom();
 }
+function addUserMessage(text) { const el = document.getElementById('chat-messages'); if (el) { appendUserBubble(el, text); scrollChatToBottom(); } }
+function addBotMessage(text)  { const el = document.getElementById('chat-messages'); if (el) { appendBotBubble(el, text); scrollChatToBottom(); } }
 
-function addUserMessage(text) {
-  const el = document.getElementById('chat-messages');
-  if (el) { appendUserBubble(el, text); scrollChatToBottom(); }
+function appendUserBubble(c, text) {
+  const init = currentUser ? currentUser.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() : 'U';
+  const d = document.createElement('div'); d.className = 'chat-msg user';
+  d.innerHTML = `<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end"><div class="msg-bubble">${escapeHtml(text)}</div><div class="msg-time">${nowTime()}</div></div><div class="msg-avatar">${init}</div>`;
+  c.appendChild(d);
 }
-function addBotMessage(text) {
-  const el = document.getElementById('chat-messages');
-  if (el) { appendBotBubble(el, text); scrollChatToBottom(); }
+function appendBotBubble(c, text) {
+  const d = document.createElement('div'); d.className = 'chat-msg bot';
+  d.innerHTML = `<div class="msg-avatar">\u2726</div><div style="flex:1"><div class="msg-bubble">${formatBotText(text)}</div><div class="msg-time">${nowTime()}</div></div>`;
+  c.appendChild(d);
 }
-
-function appendUserBubble(container, text) {
-  const initials = currentUser ? currentUser.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : 'U';
-  const div = document.createElement('div');
-  div.className = 'chat-msg user';
-  div.innerHTML = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:flex-end">
-      <div class="msg-bubble">${escapeHtml(text)}</div>
-      <div class="msg-time">${nowTime()}</div>
-    </div>
-    <div class="msg-avatar">${initials}</div>`;
-  container.appendChild(div);
-}
-
-function appendBotBubble(container, text) {
-  const div = document.createElement('div');
-  div.className = 'chat-msg bot';
-  div.innerHTML = `
-    <div class="msg-avatar">\u2726</div>
-    <div style="flex:1">
-      <div class="msg-bubble">${formatBotText(text)}</div>
-      <div class="msg-time">${nowTime()}</div>
-    </div>`;
-  container.appendChild(div);
-}
-
 function addTypingIndicator() {
-  const el  = document.getElementById('chat-messages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg bot';
-  div.id = 'typing-indicator';
-  div.innerHTML = `<div class="msg-avatar">\u2726</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
-  el.appendChild(div);
-  scrollChatToBottom();
-  return div;
+  const el = document.getElementById('chat-messages');
+  const d  = document.createElement('div'); d.className = 'chat-msg bot'; d.id = 'typing-indicator';
+  d.innerHTML = `<div class="msg-avatar">\u2726</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+  el.appendChild(d); scrollChatToBottom(); return d;
 }
-
 function scrollChatToBottom() {
   const el = document.getElementById('chat-messages');
   if (el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
 }
 
-// ── Markdown-lite formatter ──
+// ── Markdown formatter ──
 function formatBotText(text) {
-  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre><code>${escapeHtml(code.trim())}</code></pre>`);
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, l, c) => `<pre><code>${escapeHtml(c.trim())}</code></pre>`);
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
   text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -1940,57 +1844,40 @@ function formatBotText(text) {
   text = text.replace(/^[-\u2022]\s+(.+)$/gm, '<li style="margin-left:1.2em">$1</li>');
   return text.split(/\n\n+/).map(p => p.trim() ? `<p>${p.replace(/\n/g,'<br>')}</p>` : '').join('');
 }
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function nowTime() { return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
 
-function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function nowTime() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-// ── Context-aware suggestions ──
+// ── Suggestions ──
 function updateSuggestions() {
   const el = document.getElementById('chat-suggestions');
   if (!el) return;
-  let suggestions = [];
+  let s = [];
   if (currentPage === 'learn' && currentSubjectId) {
-    const s = SUBJECTS.find(sub => sub.id === currentSubjectId);
-    if (s) suggestions = [`Explain a key concept in ${s.tag}`, 'Quiz me on this topic', 'Give me a real-world example', 'What should I study next?'];
+    const sub = SUBJECTS.find(x => x.id === currentSubjectId);
+    if (sub) s = [`Explain a key ${sub.tag} concept`, 'Quiz me on this lesson', 'Give a real-world example', 'What should I learn next?'];
   } else if (currentPage === 'subject' && currentSubjectId) {
-    const s = SUBJECTS.find(sub => sub.id === currentSubjectId);
-    if (s) suggestions = [`What will I learn in ${s.title}?`, 'Is this beginner friendly?', 'What jobs use this skill?'];
+    const sub = SUBJECTS.find(x => x.id === currentSubjectId);
+    if (sub) s = [`What will I learn in ${sub.title}?`, 'Is this beginner friendly?', 'Career paths for this skill'];
   } else {
-    suggestions = ['Recommend a subject for me', 'How do I learn JavaScript?', 'What is data science?', 'Tips for online learning'];
+    s = ['Which subject should I start with?', 'Explain JavaScript in simple terms', 'What is machine learning?', 'Tips for learning to code'];
   }
-  el.innerHTML = suggestions.map(s =>
-    `<button class="chat-sugg" onclick="sendSuggestion(this)">${s}</button>`
-  ).join('');
+  el.innerHTML = s.map(t => `<button class="chat-sugg" onclick="sendSuggestion(this)">${t}</button>`).join('');
 }
-
 function sendSuggestion(btn) {
   const inp = document.getElementById('chat-input');
   if (inp) { inp.value = btn.textContent; sendChatMessage(); }
 }
+function autoResizeTextarea(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 100) + 'px'; }
+function chatInputKeydown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }
 
-function autoResizeTextarea(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
-}
-
-function chatInputKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
-}
-
-// Patch navigate to update chat context on page change
+// Patch navigate to update chat context
 (function() {
   const orig = window.navigate;
-  window.navigate = function(page, params) {
-    orig(page, params);
-    setTimeout(updateChatContext, 100);
-  };
+  window.navigate = function(page, params) { orig(page, params); setTimeout(updateChatContext, 100); };
 })();
 
 document.getElementById('chat-badge').style.display = 'flex';
+
 </script>
 </body>
 </html>
