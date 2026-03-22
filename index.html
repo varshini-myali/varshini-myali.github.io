@@ -831,10 +831,10 @@
     <div class="chat-setup-sub" style="text-align:center">Switch the AI model powering your tutor. Mistral 7B is recommended for best results.</div>
     <label style="font-size:0.78rem;font-weight:600;color:var(--ink-light)">Choose Model</label>
     <select class="chat-model-select" id="chat-model-select">
-      <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct (recommended)</option>
+      <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct v0.3 ✦ recommended</option>
       <option value="HuggingFaceH4/zephyr-7b-beta">Zephyr 7B Beta</option>
-      <option value="meta-llama/Meta-Llama-3-8B-Instruct">Llama 3 8B Instruct</option>
-      <option value="microsoft/Phi-3-mini-4k-instruct">Phi-3 Mini (fast)</option>
+      <option value="microsoft/Phi-3-mini-4k-instruct">Phi-3 Mini 4K (fast)</option>
+      <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0">TinyLlama 1.1B (fastest)</option>
     </select>
     <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveModelOnly()">Apply Model →</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="backToChat()">← Back to Chat</button>
@@ -1548,20 +1548,26 @@ initAuth();
 renderHome();
 
 // ══════════════════════════════════════════════
-//  AI TUTOR CHATBOT — Hugging Face Integration
+//  AI TUTOR CHATBOT — Hugging Face (CORS-safe)
 // ══════════════════════════════════════════════
+
+// ── Config ──
+// Using HF's router endpoint which has CORS headers enabled for browser use
+const HF_DEFAULT_KEY   = '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';
+const HF_DEFAULT_MODEL = 'mistralai/Mistral-7B-Instruct-v0.3';
+
+// These are the CORS-enabled endpoints (router.huggingface.co allows browser origin)
+const HF_ENDPOINTS = {
+  chat: (model) => `https://router.huggingface.co/hf-inference/models/${model}/v1/chat/completions`,
+  legacy: (model) => `https://router.huggingface.co/hf-inference/models/${model}`,
+};
 
 // ── Chat State ──
 const chatState = {
   open: false,
-  history: [],       // [{role:'user'|'assistant', content:''}]
+  history: [],
   isTyping: false,
-  settingsOpen: false,
 };
-
-// ── Hardcoded default token (auto-activates for all users) ──
-const HF_DEFAULT_KEY = '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';
-const HF_DEFAULT_MODEL = 'mistralai/Mistral-7B-Instruct-v0.3';
 
 // ── Storage helpers ──
 function getHFKey()     { return localStorage.getItem('lms_hf_key') || HF_DEFAULT_KEY; }
@@ -1576,10 +1582,10 @@ function saveChatHistory(h) { localStorage.setItem('lms_chat_history', JSON.stri
 // ── Toggle open/close ──
 function toggleChat() {
   chatState.open = !chatState.open;
-  const win = document.getElementById('chat-window');
-  const fab = document.getElementById('chat-fab');
+  const win     = document.getElementById('chat-window');
+  const fab     = document.getElementById('chat-fab');
   const fabIcon = document.getElementById('chat-fab-icon');
-  const badge = document.getElementById('chat-badge');
+  const badge   = document.getElementById('chat-badge');
 
   if (chatState.open) {
     win.classList.remove('hidden');
@@ -1604,11 +1610,10 @@ function toggleChat() {
   }
 }
 
-// ── Init UI: always go straight to chat (token is pre-set) ──
+// ── Init: always go straight to chat ──
 function initChatUI() {
-  const setup = document.getElementById('chat-setup-screen');
+  document.getElementById('chat-setup-screen').style.display = 'none';
   const iface = document.getElementById('chat-interface');
-  setup.style.display = 'none';
   iface.style.display = 'flex';
   chatState.history = getChatHistory();
   renderChatMessages();
@@ -1616,21 +1621,19 @@ function initChatUI() {
   updateSuggestions();
 }
 
-// ── Save API key from setup screen ──
+// ── Model settings ──
 function saveApiKey() { saveModelOnly(); }
 function saveModelOnly() {
   const model = document.getElementById('chat-model-select')?.value;
   if (model) saveHFModel(model);
   document.getElementById('chat-setup-screen').style.display = 'none';
   document.getElementById('chat-interface').style.display = 'flex';
-  toast('Model switched ✓', 'success');
+  toast('Model updated \u2713', 'success');
 }
 function backToChat() {
   document.getElementById('chat-setup-screen').style.display = 'none';
   document.getElementById('chat-interface').style.display = 'flex';
 }
-
-// ── Settings: open model switcher ──
 function openChatSettings() {
   const sel = document.getElementById('chat-model-select');
   if (sel) sel.value = getHFModel();
@@ -1650,18 +1653,17 @@ function clearChat() {
 // ── Welcome message ──
 function addWelcomeMessage() {
   const ctx = getChatContext();
-  let msg = "Hi! I'm your **Luminary AI Tutor** 🎓\n\nI'm here to help you understand concepts, answer questions, and guide your learning. What would you like to explore today?";
-  if (ctx) msg = `Hi! I'm your **Luminary AI Tutor** 🎓\n\nI can see you're studying **${ctx}**. Ask me anything about this topic, or anything else you'd like to learn!`;
+  let msg = "Hi! I\u2019m your **Luminary AI Tutor** \ud83c\udf93\n\nI\u2019m here to help you understand concepts, answer questions, and guide your learning journey. What would you like to explore?";
+  if (ctx) msg = `Hi! I\u2019m your **Luminary AI Tutor** \ud83c\udf93\n\nI can see you\u2019re studying **${ctx}**. Ask me anything about this topic, or anything else you\u2019d like to learn!`;
   addBotMessage(msg);
 }
 
-// ── Get current context ──
+// ── Get current page context ──
 function getChatContext() {
   if (currentPage === 'learn' && currentSubjectId && currentVideoId) {
     const subject = SUBJECTS.find(s => s.id === currentSubjectId);
-    const allVids = subject ? getAllVideosForSubject(subject) : [];
-    const video = allVids.find(v => v.id === currentVideoId);
-    if (subject && video) return `${subject.title} → ${video.title}`;
+    const video   = subject ? getAllVideosForSubject(subject).find(v => v.id === currentVideoId) : null;
+    if (subject && video) return `${subject.title} \u2192 ${video.title}`;
     if (subject) return subject.title;
   }
   if (currentPage === 'subject' && currentSubjectId) {
@@ -1671,11 +1673,10 @@ function getChatContext() {
   return null;
 }
 
-// ── Update context pill ──
 function updateChatContext() {
-  const ctx = getChatContext();
+  const ctx  = getChatContext();
   const pill = document.getElementById('chat-context-pill');
-  const txt = document.getElementById('chat-context-text');
+  const txt  = document.getElementById('chat-context-text');
   if (ctx && pill && txt) {
     txt.textContent = 'Studying: ' + ctx;
     pill.classList.remove('hidden');
@@ -1684,93 +1685,145 @@ function updateChatContext() {
   }
 }
 
-// ── Build system prompt ──
+// ── System prompt ──
 function buildSystemPrompt() {
   const ctx = getChatContext();
-  let base = `You are a friendly, knowledgeable AI tutor for Luminary, an online learning platform. You help students understand concepts clearly and concisely. Be encouraging, use examples, and break down complex ideas step by step. Keep responses focused and not too long unless the topic requires depth. Format code in markdown code blocks.`;
-  if (ctx) base += `\n\nThe student is currently studying: "${ctx}". Prioritize answers relevant to this topic when applicable.`;
+  let base = 'You are a friendly, expert AI tutor for Luminary, an online learning platform. Help students understand concepts clearly with examples. Be concise but thorough. Format code in markdown code blocks.';
+  if (ctx) base += ` The student is currently studying: "${ctx}". Prioritize answers relevant to this topic.`;
   return base;
 }
 
-// ── Build prompt in chat-ML format ──
-function buildPrompt(userMessage) {
-  const model = getHFModel();
-  const sys = buildSystemPrompt();
-
-  // Mistral / Zephyr / Llama 3 use [INST] or <|user|> format
-  if (model.includes('Mistral') || model.includes('zephyr')) {
-    let prompt = `<s>[INST] ${sys}\n\n`;
-    const recent = chatState.history.slice(-8);
-    for (let i = 0; i < recent.length; i++) {
-      const m = recent[i];
-      if (m.role === 'user') prompt += (i === 0 ? '' : '[INST] ') + m.content + ' [/INST] ';
-      else prompt += m.content + ' </s><s>';
-    }
-    prompt += `[INST] ${userMessage} [/INST]`;
-    return prompt;
-  }
-  if (model.includes('Llama-3')) {
-    let prompt = `<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n${sys}<|eot_id|>`;
-    chatState.history.slice(-8).forEach(m => {
-      prompt += `<|start_header_id|>${m.role === 'user' ? 'user' : 'assistant'}<|end_header_id|>\n${m.content}<|eot_id|>`;
-    });
-    prompt += `<|start_header_id|>user<|end_header_id|>\n${userMessage}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n`;
-    return prompt;
-  }
-  // Phi-3 / generic
-  let prompt = `<|system|>\n${sys}</s>\n`;
-  chatState.history.slice(-8).forEach(m => {
-    prompt += m.role === 'user' ? `<|user|>\n${m.content}</s>\n` : `<|assistant|>\n${m.content}</s>\n`;
+// ── Build messages array ──
+function buildMessages(userMessage) {
+  const messages = [{ role: 'system', content: buildSystemPrompt() }];
+  chatState.history.slice(-10).forEach(m => {
+    messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content });
   });
-  prompt += `<|user|>\n${userMessage}</s>\n<|assistant|>\n`;
-  return prompt;
+  messages.push({ role: 'user', content: userMessage });
+  return messages;
 }
 
-// ── Call Hugging Face Inference API ──
+// ═══════════════════════════════════════════════
+//  CALL HUGGING FACE  — router.huggingface.co
+//  This endpoint sets Access-Control-Allow-Origin
+//  so browsers can call it directly (no CORS error)
+// ═══════════════════════════════════════════════
 async function callHuggingFace(userMessage) {
-  const key = getHFKey();
+  const key   = getHFKey();
   const model = getHFModel();
-  const prompt = buildPrompt(userMessage);
 
-  const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: {
-        max_new_tokens: 512,
+  // ── Primary: chat completions via router (CORS-enabled) ──
+  const url = HF_ENDPOINTS.chat(model);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: buildMessages(userMessage),
+        max_tokens: 600,
         temperature: 0.7,
         top_p: 0.9,
-        repetition_penalty: 1.1,
-        do_sample: true,
-        return_full_text: false,
-      },
+        stream: false,
+      }),
+    });
+  } catch (err) {
+    // True network failure — show helpful message
+    throw new Error('Network error: Cannot reach Hugging Face. Check your internet connection.');
+  }
+
+  // Model warming up on free tier — retry after wait
+  if (response.status === 503) {
+    updateChatStatusText('Model is warming up\u2026 retrying in 12s');
+    await sleep(12000);
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: buildMessages(userMessage), max_tokens: 600, temperature: 0.7, stream: false }),
+      });
+    } catch (err) {
+      throw new Error('Model still not available. Please try again in a minute.');
+    }
+  }
+
+  if (response.status === 401) throw new Error('Invalid API token. The pre-set token may have expired.');
+  if (response.status === 429) throw new Error('Rate limit reached. Please wait a moment and try again.');
+
+  // Model doesn\u2019t support chat format \u2014 try legacy text-generation
+  if (response.status === 422 || response.status === 400) {
+    return await callLegacyEndpoint(userMessage, key, model);
+  }
+
+  if (!response.ok) {
+    let errMsg = `HF API error ${response.status}`;
+    try { const e = await response.json(); errMsg = e.error?.message || e.error || errMsg; } catch {}
+    throw new Error(errMsg);
+  }
+
+  const data = await response.json();
+
+  // OpenAI-compatible chat response
+  if (data?.choices?.[0]?.message?.content) {
+    return data.choices[0].message.content.trim();
+  }
+  // Legacy array format
+  if (Array.isArray(data) && data[0]?.generated_text) {
+    return cleanText(data[0].generated_text);
+  }
+  if (data?.generated_text) return cleanText(data.generated_text);
+
+  throw new Error('Unexpected response format. Try a different model in \u2699 settings.');
+}
+
+// ── Legacy endpoint (text-generation) via router ──
+async function callLegacyEndpoint(userMessage, key, model) {
+  const sys    = buildSystemPrompt();
+  const recent = chatState.history.slice(-6);
+  let prompt   = `[INST] ${sys}\n`;
+  recent.forEach(m => {
+    if (m.role === 'user') prompt += `${m.content} [/INST] `;
+    else prompt += `${m.content} </s><s>[INST] `;
+  });
+  prompt += `${userMessage} [/INST]`;
+
+  const response = await fetch(HF_ENDPOINTS.legacy(model), {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      inputs: prompt,
+      parameters: { max_new_tokens: 600, temperature: 0.7, return_full_text: false },
       options: { wait_for_model: true },
     }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    if (response.status === 401) throw new Error('Invalid API token. Please check your Hugging Face key in ⚙ Settings.');
-    if (response.status === 503) throw new Error('Model is loading, please try again in a moment.');
-    throw new Error(err.error || `API error ${response.status}`);
-  }
+  if (response.status === 503) throw new Error('Model is loading. Please wait ~20 seconds and try again.');
+  if (!response.ok) throw new Error(`API error ${response.status}. Try switching models in \u2699.`);
 
   const data = await response.json();
-  let text = '';
-  if (Array.isArray(data) && data[0]?.generated_text) text = data[0].generated_text;
-  else if (data.generated_text) text = data.generated_text;
-  else if (typeof data === 'string') text = data;
-  else throw new Error('Unexpected response format from model.');
+  if (Array.isArray(data) && data[0]?.generated_text) return cleanText(data[0].generated_text);
+  if (data?.generated_text) return cleanText(data.generated_text);
+  throw new Error('Could not read model response. Try a different model.');
+}
 
-  // Clean up any prompt echo or artifacts
-  text = text.replace(/^\s*\[\/INST\]\s*/,'').replace(/^\s*<\|assistant\|>\s*/,'').trim();
-  // Remove any trailing incomplete sentence if it ends mid-word
-  text = text.replace(/<\/s>.*$/s, '').trim();
-  return text || 'I didn\'t quite understand that. Could you rephrase?';
+function cleanText(text) {
+  return text
+    .replace(/^\s*\[\/INST\]\s*/, '')
+    .replace(/^\s*<\|assistant\|>\s*/, '')
+    .replace(/^\s*Assistant:\s*/i, '')
+    .replace(/<\/s>[\s\S]*$/, '')
+    .trim() || "I didn\u2019t quite catch that. Could you rephrase?";
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function updateChatStatusText(t) {
+  const el = document.getElementById('chat-status-text');
+  if (el) el.textContent = t;
 }
 
 // ── Send message ──
@@ -1778,23 +1831,18 @@ async function sendChatMessage() {
   const inp = document.getElementById('chat-input');
   const msg = inp?.value?.trim();
   if (!msg || chatState.isTyping) return;
-  if (!getHFKey()) { openChatSettings(); return; }
 
   inp.value = '';
   autoResizeTextarea(inp);
 
-  // Add user message
   chatState.history.push({ role: 'user', content: msg });
   addUserMessage(msg);
-
-  // Hide suggestions after first real message
   document.getElementById('chat-suggestions').innerHTML = '';
 
-  // Show typing
   chatState.isTyping = true;
   document.getElementById('chat-send-btn').disabled = true;
   const typingEl = addTypingIndicator();
-  document.getElementById('chat-status-text').textContent = 'Thinking…';
+  updateChatStatusText('Thinking\u2026');
 
   try {
     const reply = await callHuggingFace(msg);
@@ -1802,16 +1850,12 @@ async function sendChatMessage() {
     chatState.history.push({ role: 'assistant', content: reply });
     saveChatHistory(chatState.history);
     addBotMessage(reply);
-    document.getElementById('chat-status-text').textContent = 'Powered by Hugging Face';
-    // Contextual follow-up suggestions
-    updateSuggestions(msg);
+    updateChatStatusText('Powered by Hugging Face');
+    updateSuggestions();
   } catch (err) {
     typingEl.remove();
-    addBotMessage(`⚠️ **Error:** ${err.message}`);
-    document.getElementById('chat-status-text').textContent = 'Error — check settings';
-    if (err.message.includes('API token') || err.message.includes('Invalid')) {
-      setTimeout(openChatSettings, 1200);
-    }
+    addBotMessage(`\u26a0\ufe0f **${err.message}**`);
+    updateChatStatusText('Error \u2014 see message above');
   } finally {
     chatState.isTyping = false;
     document.getElementById('chat-send-btn').disabled = false;
@@ -1836,19 +1880,15 @@ function renderChatMessages() {
 
 function addUserMessage(text) {
   const el = document.getElementById('chat-messages');
-  if (!el) return;
-  appendUserBubble(el, text);
-  scrollChatToBottom();
+  if (el) { appendUserBubble(el, text); scrollChatToBottom(); }
 }
 function addBotMessage(text) {
   const el = document.getElementById('chat-messages');
-  if (!el) return;
-  appendBotBubble(el, text);
-  scrollChatToBottom();
+  if (el) { appendBotBubble(el, text); scrollChatToBottom(); }
 }
 
 function appendUserBubble(container, text) {
-  const userInitials = currentUser ? currentUser.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() : 'U';
+  const initials = currentUser ? currentUser.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : 'U';
   const div = document.createElement('div');
   div.className = 'chat-msg user';
   div.innerHTML = `
@@ -1856,7 +1896,7 @@ function appendUserBubble(container, text) {
       <div class="msg-bubble">${escapeHtml(text)}</div>
       <div class="msg-time">${nowTime()}</div>
     </div>
-    <div class="msg-avatar">${userInitials}</div>`;
+    <div class="msg-avatar">${initials}</div>`;
   container.appendChild(div);
 }
 
@@ -1864,7 +1904,7 @@ function appendBotBubble(container, text) {
   const div = document.createElement('div');
   div.className = 'chat-msg bot';
   div.innerHTML = `
-    <div class="msg-avatar">✦</div>
+    <div class="msg-avatar">\u2726</div>
     <div style="flex:1">
       <div class="msg-bubble">${formatBotText(text)}</div>
       <div class="msg-time">${nowTime()}</div>
@@ -1873,11 +1913,11 @@ function appendBotBubble(container, text) {
 }
 
 function addTypingIndicator() {
-  const el = document.getElementById('chat-messages');
+  const el  = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-msg bot';
   div.id = 'typing-indicator';
-  div.innerHTML = `<div class="msg-avatar">✦</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+  div.innerHTML = `<div class="msg-avatar">\u2726</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
   el.appendChild(div);
   scrollChatToBottom();
   return div;
@@ -1888,93 +1928,68 @@ function scrollChatToBottom() {
   if (el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
 }
 
-// ── Format bot text (markdown-lite) ──
+// ── Markdown-lite formatter ──
 function formatBotText(text) {
-  // Code blocks
-  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_,lang,code) =>
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
     `<pre><code>${escapeHtml(code.trim())}</code></pre>`);
-  // Inline code
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Bold
   text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Italic
   text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Numbered list
-  text = text.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-  text = text.replace(/(<li>.*<\/li>)/s, '<ol>$1</ol>');
-  // Bullet list
-  text = text.replace(/^[-•]\s+(.+)$/gm, '<li>$1</li>');
-  // Paragraphs
-  const paras = text.split(/\n\n+/);
-  return paras.map(p => p.trim() ? `<p>${p.replace(/\n/g,'<br>')}</p>` : '').join('');
+  text = text.replace(/^#{1,3}\s+(.+)$/gm, '<strong>$1</strong>');
+  text = text.replace(/^\d+\.\s+(.+)$/gm, '<li style="margin-left:1.2em;list-style:decimal">$1</li>');
+  text = text.replace(/^[-\u2022]\s+(.+)$/gm, '<li style="margin-left:1.2em">$1</li>');
+  return text.split(/\n\n+/).map(p => p.trim() ? `<p>${p.replace(/\n/g,'<br>')}</p>` : '').join('');
 }
 
 function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// ── Dynamic suggestions based on context ──
-function updateSuggestions(lastUserMsg) {
+// ── Context-aware suggestions ──
+function updateSuggestions() {
   const el = document.getElementById('chat-suggestions');
   if (!el) return;
-  const ctx = getChatContext();
   let suggestions = [];
-
   if (currentPage === 'learn' && currentSubjectId) {
     const s = SUBJECTS.find(sub => sub.id === currentSubjectId);
-    if (s) {
-      suggestions = [
-        `Explain ${s.tag} basics`,
-        'Give me a quiz question',
-        'What should I learn next?',
-        'Summarise key concepts',
-      ];
-    }
+    if (s) suggestions = [`Explain a key concept in ${s.tag}`, 'Quiz me on this topic', 'Give me a real-world example', 'What should I study next?'];
   } else if (currentPage === 'subject' && currentSubjectId) {
     const s = SUBJECTS.find(sub => sub.id === currentSubjectId);
-    if (s) suggestions = [`What is ${s.title} about?`, 'Is this good for beginners?', 'What jobs use this?'];
+    if (s) suggestions = [`What will I learn in ${s.title}?`, 'Is this beginner friendly?', 'What jobs use this skill?'];
   } else {
-    suggestions = ['Recommend a subject for me', 'What is JavaScript?', 'How do I start with Python?', 'Best practices in design'];
+    suggestions = ['Recommend a subject for me', 'How do I learn JavaScript?', 'What is data science?', 'Tips for online learning'];
   }
-
   el.innerHTML = suggestions.map(s =>
     `<button class="chat-sugg" onclick="sendSuggestion(this)">${s}</button>`
   ).join('');
 }
 
 function sendSuggestion(btn) {
-  const text = btn.textContent;
   const inp = document.getElementById('chat-input');
-  if (inp) { inp.value = text; sendChatMessage(); }
+  if (inp) { inp.value = btn.textContent; sendChatMessage(); }
 }
 
-// ── Textarea auto-resize ──
 function autoResizeTextarea(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 100) + 'px';
 }
 
-// ── Enter to send ──
 function chatInputKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
 }
 
-// ── Update context pill whenever page changes ──
-const _origNavigate = navigate;
-// Patch navigate to also update chat context
+// Patch navigate to update chat context on page change
 (function() {
-  const orig = navigate;
+  const orig = window.navigate;
   window.navigate = function(page, params) {
     orig(page, params);
     setTimeout(updateChatContext, 100);
   };
 })();
 
-// Init chat badge visibility
 document.getElementById('chat-badge').style.display = 'flex';
 </script>
 </body>
